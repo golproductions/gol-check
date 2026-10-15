@@ -1,0 +1,15 @@
+{
+  "name": "gol-check",
+  "owner": {
+    "name": "GOLProductions",
+    "url": "https://golproductions.com"
+  },
+  "description": "Check by GOLProductions: your own machine checks your AI's commands and file writes before they run.",
+  "plugins": [
+    {
+      "name": "gol-check",
+      "source": "./",
+      "description": "Before your AI runs a command or writes a file, your own machine checks it."
+    }
+  ]
+}

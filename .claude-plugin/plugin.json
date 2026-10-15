@@ -1,0 +1,22 @@
+{
+  "name": "gol-check",
+  "version": "4.4.0",
+  "description": "Check: before your AI runs a command or writes a file, your own machine checks it. Stops actions your machine proves wrong.",
+  "author": {
+    "name": "GOLProductions",
+    "url": "https://golproductions.com"
+  },
+  "homepage": "https://golproductions.com/check",
+  "license": "SEE LICENSE IN https://golproductions.com/terms",
+  "userConfig": {
+    "gol_api_key": {
+      "type": "string",
+      "title": "GOL API Key",
+      "description": "From https://golproductions.com/console (14 days free). Stored in secure storage, never shown to your AI.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "displayName": "Check",
+  "repository": "https://github.com/golproductions/gol-check"
+}
