@@ -18,17 +18,21 @@ A GOL API Key from https://golproductions.com/console (14 days free, no card). Y
 
 ## What it runs
 
-- `run.mjs`, the plugin's only code, runs on each command, file write, message and failed command.
-- The first time, it downloads the Check gate from https://triage.golproductions.com/install-hook into `~/.check/check-hook.mjs`. The gate is used only if its SHA-256 fingerprint and its Ed25519 signature (public key in `run.mjs`) both verify. The gate updates itself hourly the same way.
-- The gate runs read-only checks on your machine: it looks up programs and paths, asks tools such as `git`, `node --check`, `bash -n`, `ruby -c`, `php -l`, `docker image inspect` and PowerShell's parser, and parses files your AI writes. It does not run your command.
+- `check-hook.mjs`, the Check client, is the plugin's only code. It runs before each command and file write, and on each message you send. It is plain, readable JavaScript, and it never downloads or replaces code: updates come as new versions of this plugin.
+- It decides nothing. It tells Check's server what your AI is about to do, and answers the server's questions about your machine, from a fixed list, and only about names the command itself contains.
+- To answer, it runs read-only checks: it looks up programs and paths, asks tools such as `git`, `node --check`, `bash -n`, `ruby -c`, `php -l`, `docker image inspect` and PowerShell's parser, and parses files your AI writes. It never runs your command, and never anything that changes your machine.
+- It keeps small caches in `~/.check` (routes, Docker help text, PowerShell names, the TypeScript build cache) and a short receipt per reply, deleted once shown or after two days. It deletes nothing else.
+- When your AI installs a package, it reads your package-manager settings (`.npmrc`, `pip.conf`, Cargo and RubyGems config, and their `*_REGISTRY` / `*_INDEX_URL` environment variables) only to tell whether you install from a private registry. It sends only which kind (for example "npm"), never an address, token or file content, so Check stays silent there rather than ask the public registry.
+- It reads each message you send, on your machine, only to skip the messages Claude Code starts by itself. The text never leaves your machine.
+- If your project's TypeScript takes more than 2.5 seconds on an edit, the edit goes ahead and that check finishes in the background, so the next edit is quick.
 
 ## What it sends
 
-To https://triage.golproductions.com: the command your AI is about to run (credential patterns removed), the working folder (username masked), the results of the machine's checks, and, for a file write, the file's name, size and whether it exists (never its contents). For each message, only its identifier, never its text. It never sends your prompts or your files. The server may look up package and image names on public registries (npm, PyPI, Docker Hub and others). Full details: https://golproductions.com/privacy
+To https://triage.golproductions.com: the layout of your AI tool's hook message (field names and lengths, never their values), the command your AI is about to run (credential patterns removed), the working folder (username masked), the results of the machine's checks, and, for a file write, the file's name, size and whether it exists (never its contents). For each message, only its identifier, never its text. It never sends your prompts or your files. The server may look up package and image names on public registries (npm, PyPI, Docker Hub and others). Full details: https://golproductions.com/privacy
 
 ## If anything fails
 
-Check never blocks because of its own failure: with no key, no network or a gate that doesn't verify, actions go ahead unchecked and Check says so.
+Check never blocks because of its own failure: with no key or no network, actions go ahead unchecked and Check says so.
 
 ## Licence
 

@@ -1,6 +1,6 @@
 {
   "name": "gol-check",
-  "version": "4.4.0",
+  "version": "5.0.0",
   "description": "Check: before your AI runs a command or writes a file, your own machine checks it. Stops actions your machine proves wrong.",
   "author": {
     "name": "GOLProductions",
