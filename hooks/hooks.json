@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/run.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/run.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/run.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
           }
         ]
       }
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/run.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
           }
         ]
       }
