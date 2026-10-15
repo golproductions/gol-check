@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const BASE = "https://triage.golproductions.com";
-const home = process.env.CHECK_TEST_HOME || homedir();
+const home = homedir();
 const dir = join(home, ".check");
 const gate = join(dir, "check-hook.mjs");
 
@@ -58,9 +58,8 @@ async function main() {
   const key = keyOf();
   if (!key) { say("add your GOL API Key in the plugin's settings to turn Check on (from https://golproductions.com/console). Until then, actions go ahead unchecked."); return 0; }
   if (!existsSync(gate) && !(await fetchGate(key))) return 0;
-  const env = { ...process.env, GOL_API_KEY: key };
-  const r = spawnSync(process.execPath, [gate], { input, env, encoding: "utf8", timeout: 90000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
-  if (process.env.CHECK_PLUGIN_TRACE) { try { const { appendFileSync } = await import("node:fs"); appendFileSync(process.env.CHECK_PLUGIN_TRACE, JSON.stringify({ input: input.slice(0, 600), status: r.status, stdout: String(r.stdout || "").slice(0, 400), stderr: String(r.stderr || "").slice(0, 300) }) + "\n"); } catch {} }
+  // The gate reads the key from the plugin's own setting, as Claude Code passes it.
+  const r = spawnSync(process.execPath, [gate], { input, encoding: "utf8", timeout: 90000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   if (r.error || r.status === null) return 0;
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
