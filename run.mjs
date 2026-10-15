@@ -1,6 +1,6 @@
 // Check plugin launcher. Copyright (c) 2026 GOLProductions. All rights reserved.
 //
-// The plugin's only code. It finds the person's GOL API Key, makes sure the
+// The plugin's only code. It makes sure the
 // Check gate is on this machine (downloading it once, SHA-256 checked, the way
 // the installer does), then hands the hook's input to the gate unchanged and
 // returns the gate's answer. Check's logic lives in the gate and on the server.
@@ -18,11 +18,6 @@ const home = homedir();
 const dir = join(home, ".check");
 const gate = join(dir, "check-hook.mjs");
 
-// Claude Code: the key comes only from the plugin's own setting (entered at
-// install, kept in Claude Code's secure storage), never from the machine.
-function keyOf() {
-  return (process.env.CLAUDE_PLUGIN_OPTION_GOL_API_KEY || "").trim();
-}
 
 // The gate is signed off the server (Ed25519); this is the public half.
 const GATE_PUBKEY = "MCowBQYDK2VwAyEAvxzQMczyQqAvTLEBEZWR9SMUECPlGXc0JOyqC7FVh0o=";
@@ -32,12 +27,12 @@ function signedByGol(body, sigB64) {
 
 function say(line) { try { process.stderr.write("check: " + line + "\n"); } catch {} }
 
-async function fetchGate(key) {
+async function fetchGate() {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), 15000);
   try {
-    const r = await fetch(BASE + "/install-hook", { method: "POST", headers: { "X-GOL-CLIENT-ID": key, "User-Agent": "c/plugin" }, signal: ac.signal });
-    if (!r.ok) { say(r.status === 401 || r.status === 403 ? "that GOL API Key wasn't accepted. Check it at https://golproductions.com/console" : "couldn't download Check (server said " + r.status + "). Actions go ahead unchecked."); return false; }
+    const r = await fetch(BASE + "/install-hook", { method: "POST", headers: { "User-Agent": "c/plugin" }, signal: ac.signal });
+    if (!r.ok) { say("couldn't download Check (server said " + r.status + "). Actions go ahead unchecked."); return false; }
     const want = (r.headers.get("x-hook-sha256") || "").toLowerCase();
     const body = Buffer.from(await r.arrayBuffer());
     if (!want || createHash("sha256").update(body).digest("hex") !== want) { say("the downloaded gate didn't match its fingerprint, so it wasn't used."); return false; }
@@ -55,10 +50,8 @@ async function fetchGate(key) {
 async function main() {
   let input = "";
   for await (const c of process.stdin) input += c;
-  const key = keyOf();
-  if (!key) { say("add your GOL API Key in the plugin's settings to turn Check on (from https://golproductions.com/console). Until then, actions go ahead unchecked."); return 0; }
-  if (!existsSync(gate) && !(await fetchGate(key))) return 0;
-  // The gate reads the key from the plugin's own setting, as Claude Code passes it.
+  if (!existsSync(gate) && !(await fetchGate())) return 0;
+  // The gate reads the GOL API Key from the plugin's own setting, as Claude Code passes it.
   const r = spawnSync(process.execPath, [gate], { input, encoding: "utf8", timeout: 90000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   if (r.error || r.status === null) return 0;
   if (r.stdout) process.stdout.write(r.stdout);
