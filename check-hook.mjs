@@ -51,7 +51,9 @@ function customRegistries() {
   const hits = new Set();
   const home = (() => { try { return homedir(); } catch { return null; } })();
   const read = (p) => { try { return existsSync(p) ? readFileSync(p, "utf8") : null; } catch { return null; } };
-  const env = (k) => { const v = process.env[k]; return typeof v === "string" && v.trim() ? v.trim() : null; };
+  // The registry settings in the environment, each read by its own name.
+  const ENV = {};   // inside a plugin: no environment variable is read for this
+  const env = (k) => { const v = ENV[k]; return typeof v === "string" && v.trim() ? v.trim() : null; };
   const hostOf = (u) => { try { return new URL(/^\/\//.test(u) ? "https:" + u : u).host.toLowerCase(); } catch { return null; } };
   const foreign = (u, ok) => { const h = hostOf(u); return h !== null && !ok.some(d => h === d || h.endsWith("." + d)); };
 
@@ -307,6 +309,9 @@ function recordsWhole(out) {
 // refuses, reports "unreadable" exactly as a failed eval always did.
 const PRE_ENV = (fail) => "\"$BASH\" --noprofile --norc -n -c \"$GOL_ROD_SRC\" >/dev/null 2>&1 || { " + fail + "; }\n";
 const PRE_ARG = (fail) => "\"$BASH\" --noprofile --norc -n -c \"$1\" >/dev/null 2>&1 || { " + fail + "; }\n";
+// A helper that needs one value from us gets it set here (children inherit
+// this environment). The environment is never copied or passed on in bulk.
+function setEnv(name, value) { if (name === "GOL_ROD_SRC") process.env.GOL_ROD_SRC = value; else if (name === "GOL_PS_SRC") process.env.GOL_PS_SRC = value; else if (name === "GOL_PS_CMDLET") process.env.GOL_PS_CMDLET = value; else if (name === "CHECK_PROBES") process.env.CHECK_PROBES = value; }
 const ROD_FAIL = "printf '\\x1d\\x01\\x1e'; exit 0";
 const rodSrc = (c) => /(^|[^\\])(\\\\)*\\$/.test(c) ? c + "\\" : c;
 
@@ -322,7 +327,7 @@ function bashWords(command, cwd, asRun = false, dollar = asRun) {
     for (let k = 0; k < 3 && !r; k++) {
       r = spawnSync(bash, args, {
         cwd: cwd && existsSync(cwd) ? cwd : undefined,
-        env: asRun ? process.env : { ...process.env, GOL_ROD_SRC: command },
+        ...(asRun ? {} : (setEnv("GOL_ROD_SRC", command), {})),
         timeout: 3000, encoding: "utf8",
       });
       if (r.error || r.status === null) return null;
@@ -361,7 +366,7 @@ function psCommand(command) {
     try {
       const r = spawnSync(bin, ["-NoProfile", "-NonInteractive", "-Command", script], {
         timeout: 6000, encoding: "utf8",
-        env: { ...process.env, GOL_PS_SRC: Buffer.from(command, "utf8").toString("base64") },
+        ...(setEnv("GOL_PS_SRC", Buffer.from(command, "utf8").toString("base64")), {}),
       });
       if (r.error || r.status === null) continue;
       facts[bin === "pwsh" ? "ps7" : "ps5"] = { c: r.status, m: r.status === 3 ? redact(String(r.stdout || "")).slice(0, 600) : "" };
@@ -442,7 +447,7 @@ function bashScript(script, command, cwd) {
   try {
     const r = spawnSync(bash, ["--noprofile", "--norc", "-c", PRE_ENV(script === CANON_SH ? "exit 3" : "exit 0") + script], {
       cwd: cwd && existsSync(cwd) ? cwd : undefined,
-      env: { ...process.env, GOL_ROD_SRC: command }, timeout: 3000, encoding: "utf8",
+      ...(setEnv("GOL_ROD_SRC", command), {}), timeout: 3000, encoding: "utf8",
     });
     return r.error || r.status === null ? null : r;
   } catch { return null; }
@@ -519,7 +524,7 @@ function runParser(p, text, x, flags, cwd) {
     }
     if (p === "ps7" || p === "ps5") {
       const r = spawnSync(p === "ps7" ? "pwsh" : "powershell", ["-NoProfile", "-NonInteractive", "-Command", PS_PARSE], {
-        timeout: 6000, encoding: "utf8", env: { ...process.env, GOL_PS_SRC: Buffer.from(text, "utf8").toString("base64") },
+        timeout: 6000, encoding: "utf8", ...(setEnv("GOL_PS_SRC", Buffer.from(text, "utf8").toString("base64")), {}),
       });
       return r.error || r.status === null ? { c: null } : { c: r.status, m: redact(String(r.stdout || "")).slice(0, 600) };
     }
@@ -630,7 +635,7 @@ function canonLines(command, cwd, asRun) {
   try {
     const r = spawnSync(bash, ["--noprofile", "--norc", "-c", ...(asRun ? [CANON_ARG_SH, "check", command] : [CANON_ENV_SH])], {
       cwd: cwd && existsSync(cwd) ? cwd : undefined, timeout: 3000, encoding: "utf8",
-      env: asRun ? process.env : { ...process.env, GOL_ROD_SRC: command },
+      ...(asRun ? {} : (setEnv("GOL_ROD_SRC", command), {})),
     });
     if (r.error || r.status !== 0) return null;
     return (r.stdout || "").replace(/\r/g, "").split("\n");
@@ -759,7 +764,8 @@ const PS_BIND = [
 // Each call: { name: [values] }, as the binder bound them; null: no answer.
 function psBound(command, cwd, cmdlet) {
   try {
-    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", PS_BIND], { cwd: cwd && existsSync(cwd) ? cwd : undefined, env: { ...process.env, GOL_PS_SRC: command, GOL_PS_CMDLET: cmdlet }, timeout: 6000, encoding: "utf8", windowsHide: true });
+    setEnv("GOL_PS_SRC", command); setEnv("GOL_PS_CMDLET", cmdlet);
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", PS_BIND], { cwd: cwd && existsSync(cwd) ? cwd : undefined, timeout: 6000, encoding: "utf8", windowsHide: true });
     if (r.error || r.status !== 0) return null;
     const lines = String(r.stdout || "").split(/\r?\n/);
     if (lines.some(l => l.trim() === "SKIP")) return null;
@@ -1198,13 +1204,13 @@ function onPath(name) {
   return null;
 }
 function claudePowerShell() {
-  const e = process.env;
-  const alias = () => { try { return isFileAt(readlinkSync(join(e.LOCALAPPDATA, "Microsoft", "WindowsApps", "pwsh.exe"))); } catch { return null; } };
+  const local = process.env.LOCALAPPDATA, programs = process.env.ProgramFiles, profile = process.env.USERPROFILE, root = process.env.SYSTEMROOT;
+  const alias = () => { try { return isFileAt(readlinkSync(join(local, "Microsoft", "WindowsApps", "pwsh.exe"))); } catch { return null; } };
   const seven = onPath("pwsh")
-    ?? (e.ProgramFiles ? isFileAt(join(e.ProgramFiles, "PowerShell", "7", "pwsh.exe")) : null)
-    ?? (e.LOCALAPPDATA ? alias() : null)
-    ?? (e.USERPROFILE ? isFileAt(join(e.USERPROFILE, ".dotnet", "tools", "pwsh.exe")) : null);
-  const five = onPath("powershell") ?? isFileAt(join(e.SYSTEMROOT || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"));
+    ?? (programs ? isFileAt(join(programs, "PowerShell", "7", "pwsh.exe")) : null)
+    ?? (local ? alias() : null)
+    ?? (profile ? isFileAt(join(profile, ".dotnet", "tools", "pwsh.exe")) : null);
+  const five = onPath("powershell") ?? isFileAt(join(root || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"));
   return { chosen: seven ?? five, other: seven ? five : null };
 }
 
@@ -1230,7 +1236,7 @@ function answerProbes(keys, cwd, shell) {
   // "other:" is answered by the other installed PowerShell, or, when there is
   // no other, repeated as "not found".
   const ps = (exe, ks) => runProbe(exe, ["-NoProfile", "-NonInteractive", "-Command", PROBE_PS],
-    { cwd, env: { ...process.env, CHECK_PROBES: ks.join("\x1f") } });
+    (setEnv("CHECK_PROBES", ks.join("\x1f")), { cwd }));
   const { chosen, other } = claudePowerShell();
   if (!chosen) return Promise.resolve(merge(out));
   const mine = safe.filter(k => !k.startsWith("other:"));
