@@ -43,6 +43,21 @@
           }
         ]
       }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/check-hook.mjs",
+              "${user_config.gol_api_key}"
+            ]
+          }
+        ]
+      }
     ]
   }
 }

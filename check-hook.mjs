@@ -1111,7 +1111,7 @@ const PROBE_SH = `for k in "$@"; do
       esac ;;
     npxbin:*) b="\${k#npxbin:}"; n="\${b##*/}"
       if type -- "$n" >/dev/null 2>&1; then r=1
-      else d=$(pwd)
+      else d=$PWD
         while :; do
           if [ -e "$d/node_modules/.bin/$n" ] || [ -e "$d/node_modules/.bin/$n.cmd" ] || [ -e "$d/node_modules/$b" ]; then r=1; break; fi
           u="\${d%/*}"; [ -z "$u" ] || [ "$u" = "$d" ] && break; d=$u
