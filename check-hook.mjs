@@ -24,7 +24,7 @@ import { homedir, platform, tmpdir } from "node:os";
 const VERSION = "5.0.0";
 const API = "https://triage.golproductions.com/preflight";
 const BASE = API.replace(/\/preflight$/, "");
-const CLIENT_ID_ENV = (process.env.CLAUDE_PLUGIN_OPTION_GOL_API_KEY || "").trim();
+const CLIENT_ID_ENV = process.env.GOL_API_KEY || process.env.GOL_CLIENT_ID || process.env.CLAUDE_PLUGIN_OPTION_GOL_API_KEY || "";
 // Gate updates are signed off the server (Ed25519); this is the public half.
 // An update without a valid signature is never used, so reaching the server
 // alone can't put code on anyone's machine.
@@ -138,8 +138,17 @@ function customRegistries() {
   return [...hits];
 }
 
-// Inside a plugin: the plugin's own setting, as Claude Code passes it. Nothing else.
-function getClientId() { return CLIENT_ID_ENV; }
+function getClientId() {
+  if (CLIENT_ID_ENV) return CLIENT_ID_ENV;
+  try {
+    const k = readFileSync(join(homedir(), ".check", "key"), "utf8").trim();
+    if (k) return k;
+  } catch {}
+  try {
+    const cfg = JSON.parse(readFileSync(join(homedir(), ".claude", "settings.json"), "utf8"));
+    return cfg.env?.GOL_CLIENT_ID || "";
+  } catch { return ""; }
+}
 
 // --- REDACTION -------------------------------------------------------------
 //
@@ -741,8 +750,7 @@ const PS_BIND = [
   "$md = [System.Management.Automation.CommandMetadata]::new((Get-Command $want -CommandType Cmdlet))",
   "$pb = [System.Management.Automation.ProxyCommand]::GetParamBlock($md)",
   "$cb = [System.Management.Automation.ProxyCommand]::GetCmdletBindingAttribute($md)",
-  "$def = \"function __GolBound { $cb param($pb) 'CALL'; foreach (`$k in `$PSBoundParameters.Keys) { foreach (`$v in @(`$PSBoundParameters[`$k])) { 'ARG[' + `$k + '=' + `$v + ']' } } }\"",
-  ". ([scriptblock]::Create($def))",
+  "Invoke-Expression (\"function __GolBound { $cb param($pb) 'CALL'; foreach (`$k in `$PSBoundParameters.Keys) { foreach (`$v in @(`$PSBoundParameters[`$k])) { 'ARG[' + `$k + '=' + `$v + ']' } } }\")",
   "foreach ($c in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true)) {",
   "  $n = $c.GetCommandName(); if (-not $n) { continue }",
   "  $ci = Get-Command $n -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $ci) { continue }",
@@ -1062,7 +1070,7 @@ const NOTICE = {
   key_rejected:    'check: this key was not accepted. Local syntax check still runs. Fix or replace at golproductions.com/console.',
   unreachable:     'check: verification service unreachable, command ran unverified. Resumes automatically.',
   bad_input:       'check: hook input could not be read, so this command ran unverified. Nothing is blocked.',
-  no_key:          'check: no GOL API Key on this machine, so commands run unverified. Nothing is blocked. The person at this computer: get a key at golproductions.com/console, then add it in the settings of your Check plugin, or with the Check installer (golproductions.com/guide).',
+  no_key:          'check: no GOL API Key on this machine, so commands run unverified. Nothing is blocked. The person at this computer: get a key at golproductions.com/console and run npx @golproductions/check@latest --key in their own terminal.',
 };
 
 // Billing / traffic state: warn once per day per category, then let the
