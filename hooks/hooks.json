@@ -7,7 +7,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/check-hook.mjs",
+              "${user_config.gol_api_key}"
+            ]
           }
         ]
       }
@@ -17,7 +21,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/check-hook.mjs",
+              "${user_config.gol_api_key}"
+            ]
           }
         ]
       }
@@ -27,7 +35,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/check-hook.mjs",
+              "${user_config.gol_api_key}"
+            ]
           }
         ]
       }
@@ -38,7 +50,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/check-hook.mjs\""
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/check-hook.mjs",
+              "${user_config.gol_api_key}"
+            ]
           }
         ]
       }

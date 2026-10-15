@@ -24,7 +24,9 @@ import { homedir, platform, tmpdir } from "node:os";
 const VERSION = "5.0.0";
 const API = "https://triage.golproductions.com/preflight";
 const BASE = API.replace(/\/preflight$/, "");
-const CLIENT_ID_ENV = (process.env.CLAUDE_PLUGIN_OPTION_GOL_API_KEY || "").trim();
+// The key, as Claude Code hands it to this hook: ${user_config.gol_api_key} in its arguments.
+// An option that was never set arrives unsubstituted, and counts as no key.
+const CLIENT_ID_ENV = ((a) => (typeof a === "string" && !a.includes("${") ? a.trim() : ""))(process.argv[2]);
 // Gate updates are signed off the server (Ed25519); this is the public half.
 // An update without a valid signature is never used, so reaching the server
 // alone can't put code on anyone's machine.
