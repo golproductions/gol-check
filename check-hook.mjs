@@ -1064,13 +1064,16 @@ function out(f, ok, reason, silent = false) {
 // One-voice fail-open messages. `check:` prefix, what's paused, what still
 // runs, one line on the fix.
 const NOTICE = {
-  rate_limit:      'check: rate limited. Verification paused; local syntax check still runs. Waits out in a minute.',
-  server_error:    (n) => 'check: verification service is down (HTTP ' + n + '). Local syntax check still runs. Resumes automatically.',
-  credits:         () => 'check: no credit left (your free trial has ended or your balance is empty), so Check is not checking. Nothing is blocked. Top up at golproductions.com/console.',
-  key_rejected:    'check: this key was not accepted. Local syntax check still runs. Fix or replace at golproductions.com/console.',
-  unreachable:     'check: verification service unreachable, command ran unverified. Resumes automatically.',
-  bad_input:       'check: hook input could not be read, so this command ran unverified. Nothing is blocked.',
-  no_key:          'check: no GOL API Key on this machine, so commands run unverified. Nothing is blocked. The person at this computer: get a key at golproductions.com/console, then add it in the settings of your Check plugin, or with the Check installer (golproductions.com/guide).',
+  rate_limit:      'Check: server unavailable (429).',
+  cap:             'Check is paused: today\'s spending limit is reached.',
+  server_error:    (n) => 'Check: server unavailable (' + n + ').',
+  credits:         () => 'Check is paused: no credit left. Top up at golproductions.com/console.',
+  key_rejected:    'Check is off: this key isn\'t valid. See golproductions.com/console.',
+  unreachable:     'Check: server unavailable (no connection).',
+  timeout:         'Check: server unavailable (timeout).',
+  update:          'Check is off: it needs updating. See golproductions.com/guide.',
+  bad_input:       'Check: this action wasn\'t checked.',
+  no_key:          'Check is off: add your GOL API Key from golproductions.com/console.',
 };
 
 // Billing / traffic state: warn once per day per category, then let the
@@ -1278,6 +1281,10 @@ function runProbe(exe, args, opts) {
 
 // --- MAIN HOOK ENTRY -------------------------------------------------------
 
+// A reply that isn't JSON (a Cloudflare error page, say) reads as {}, so its
+// status code still reaches the notice instead of looking like no connection.
+async function readJson(res) { try { return await res.json(); } catch { return {}; } }
+
 function post(hookKey, payload, ms = 5000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -1300,7 +1307,7 @@ async function consult(hookKey, body, ctx, shell, cwd, preParsed = {}) {
     const payload = { ...body, parsed };
     if (probe) { payload.probe = probe; payload.probe_why = why; delete payload.probe_ok; }
     res = await post(hookKey, payload);
-    d = await res.json();
+    d = await readJson(res);
     if (!res.ok || d.verdict !== "probe") break;
     let fresh = false;
     const keys = (Array.isArray(d.probe) ? d.probe : []).filter(k => typeof k === "string" && !asked.has(k));
@@ -1322,15 +1329,18 @@ async function consult(hookKey, body, ctx, shell, cwd, preParsed = {}) {
 
 function verdictOut(f, res, d, restore = (s) => s) {
   if (!res.ok) {
+    if (res.status === 429 && /spending cap/i.test(d.error || "")) { outCreditsExhausted(f, NOTICE.cap, "cap"); return; }
     if (res.status === 429 || /rate limit/i.test(d.reason || d.error || "")) { outCreditsExhausted(f, NOTICE.rate_limit, "rate_limit"); return; }
-    if (res.status >= 500) { outCreditsExhausted(f, NOTICE.server_error(res.status), "server_error"); return; }
     if (res.status === 402) { outCreditsExhausted(f, NOTICE.credits(d.daily_free || 120), "credits_exhausted"); return; }
-    outCreditsExhausted(f, NOTICE.key_rejected, "key_rejected");
+    if (res.status === 401 || res.status === 403) { outCreditsExhausted(f, NOTICE.key_rejected, "key_rejected"); return; }
+    if (res.status === 426) { outCreditsExhausted(f, NOTICE.update, "update"); return; }
+    // Any other code (5xx, a Cloudflare error, an unexpected 4xx): the code itself.
+    outCreditsExhausted(f, NOTICE.server_error(res.status), "server_error");
     return;
   }
   // Anything but a deny passes: a question left open is no verdict.
   if (d.verdict !== "invalid") { out(f, true); return; }
-  out(f, false, restore(d.reason || "check: server returned a deny with no reason attached. Report at golproductions.com/console if this persists."));
+  out(f, false, restore(d.reason || "This action would fail."));
 }
 
 // --- TURNS AND HELPERS ------------------------------------------------------
@@ -1487,12 +1497,17 @@ function routeAnswer(raw, q) {
   }
   return null;
 }
+// Why the last /route call failed: its status code, "timeout" or "net".
+let ROUTE_FAIL = null;
 async function postRoute(key, body, ms = 4000) {
   const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
   try {
     const r = await fetch(BASE + "/route", { method: "POST", headers: { "Content-Type": "application/json", ...(key ? { "X-GOL-CLIENT-ID": key } : {}), "User-Agent": "c/" + VERSION }, body: JSON.stringify(body), signal: ac.signal });
-    return r.ok ? await r.json() : null;
-  } catch { return null; } finally { clearTimeout(t); }
+    if (!r.ok) { ROUTE_FAIL = r.status; return null; }
+    const d = await readJson(r);
+    if (!d || typeof d !== "object" || (!d.route && !Array.isArray(d.ask))) { ROUTE_FAIL = r.status; return null; }
+    return d;
+  } catch (e) { ROUTE_FAIL = e && (e.name === "AbortError" || e.name === "TimeoutError") ? "timeout" : "net"; return null; } finally { clearTimeout(t); }
 }
 // The route for this input: from the day's cache if the same questions get
 // the same answers, else from the server. null: no route (offline).
@@ -1598,8 +1613,7 @@ function onStop(p) {
   process.exitCode = 0;
   try {
     if (p.stop_hook_active) return;
-    const msg = receiptFor(p.prompt_id);
-    if (msg) process.stdout.write(JSON.stringify({ systemMessage: msg }));
+    receiptFor(p.prompt_id);   // tidies the message's record; Check prints nothing at the end of a reply
   } catch {}
 }
 
@@ -1864,7 +1878,7 @@ async function consultThin(hookKey, body, shell) {
     const payload = { ...body, answers, parsed };
     if (probe) { payload.probe = probe; payload.probe_why = why; }
     res = await post(hookKey, payload);
-    d = await res.json();
+    d = await readJson(res);
     if (!res.ok) break;
     if (d.verdict === "ask") {
       if (d.focus && typeof d.focus === "object") {
@@ -1915,7 +1929,22 @@ async function main() {
       return;
     }
     const route = await routeOf(p, key0);
-    if (!route) { process.exitCode = 0; return; }
+    if (!route) {
+      // The server couldn't be asked how to answer. Claude Code and Codex share
+      // one public hook format, so for their pre-action event Check can still
+      // say why it isn't checking; any other tool is left to run, silently.
+      const why = ROUTE_FAIL;
+      if (why && p && p.hook_event_name === "PreToolUse" && typeof p.tool_name === "string") {
+        const allow = { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" } };
+        REPLIES = { allow: { stdout: allow }, notice: { stdout: { ...allow, systemMessage: "$notice" } } };
+        const notice = why === "timeout" ? NOTICE.timeout : why === "net" ? NOTICE.unreachable
+          : why === 401 || why === 403 ? NOTICE.key_rejected : why === 402 ? NOTICE.credits()
+          : why === 429 ? NOTICE.rate_limit : why === 426 ? NOTICE.update : NOTICE.server_error(why);
+        outCreditsExhausted("claude", notice, why === 401 || why === 403 ? "key_rejected" : why === 402 ? "credits_exhausted" : why === 429 ? "rate_limit" : "server_error");
+        return;
+      }
+      process.exitCode = 0; return;
+    }
     const ad = applyRoute(p, route);
     FMT = f = ad.fmt;
     if (ad.pass) { out(f, true, "", true); return; }
@@ -1970,8 +1999,9 @@ async function main() {
     if (CURRENT_PROMPT) body.prompt_id = CURRENT_PROMPT.slice(0, 160);
     const { res, d } = await consultThin(hookKey, body, p.tool_name === "PowerShell" ? "powershell" : "bash");
     verdictOut(f, res, d);
-  } catch {
-    outCreditsExhausted(f, NOTICE.unreachable, "unreachable");
+  } catch (e) {
+    const timedOut = e && (e.name === "AbortError" || e.name === "TimeoutError");
+    outCreditsExhausted(f, timedOut ? NOTICE.timeout : NOTICE.unreachable, "unreachable");
   }
 }
 
